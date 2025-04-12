@@ -101,9 +101,11 @@ pub struct Command {
     subcommands: Vec<Command>,
     groups: Vec<ArgGroup>,
     current_help_heading: Option<Str>,
+    current_subcommand_help_heading: Option<Str>,
     current_disp_ord: Option<usize>,
     subcommand_value_name: Option<Str>,
     subcommand_heading: Option<Str>,
+    subcommand_help_heading: Option<Option<Str>>,
     external_value_parser: Option<super::ValueParser>,
     long_help_exists: bool,
     deferred: Option<fn(Command) -> Command>,
@@ -490,6 +492,7 @@ impl Command {
             subcmd.disp_ord.get_or_insert(current);
             *current_disp_ord = current + 1;
         }
+        subcmd.subcommand_help_heading.get_or_insert_with(|| self.current_subcommand_help_heading.clone());
         self.subcommands.push(subcmd);
         self
     }
@@ -2294,6 +2297,32 @@ impl Command {
         self.current_help_heading = heading.into_resettable().into_option();
         self
     }
+
+        /// Set the default section heading for future subcommands.
+    ///
+    /// This will be used for any subcommand that hasn't had [`Command::subcommand_help_heading`] called.
+    ///
+    /// This is useful if the default `Commands` heading is
+    /// not specific enough for one's use case.
+    ///
+    /// [`Command::subcommand`]: Command::subcommand()
+    /// [`Command::subcommand_help_heading`]: crate::Command::subcommand_help_heading()
+    #[inline]
+    #[must_use]
+    pub fn next_subcommand_help_heading(mut self, heading: impl IntoResettable<Str>) -> Self {
+        self.current_subcommand_help_heading = heading.into_resettable().into_option();
+        self
+    }
+
+        /// Get the custom section heading specified via [`Command::next_subcommand_help_heading`].
+    ///
+    /// [`Command::subcommand_help_heading`]: Command::subcommand_help_heading()
+    #[inline]
+    pub fn get_next_subcommand_help_heading(&self) -> Option<&str> {
+        self.current_subcommand_help_heading.as_deref()
+    }
+
+
 
     /// Change the starting value for assigning future display orders for args.
     ///
@@ -4889,6 +4918,14 @@ impl Command {
             .any(|sc| sc.name != "help" && !sc.is_set(AppSettings::Hidden))
     }
 
+    #[cfg(any(feature = "usage", feature = "help"))]
+    pub(crate) fn needs_commands_header(&self) -> bool {
+        self.subcommands
+            .iter()
+            .filter(|sc| !sc.is_set(AppSettings::Hidden))
+            .any(|sc| sc.subcommand_help_heading.is_none())
+    }
+
     /// Check if this subcommand can be referred to as `name`. In other words,
     /// check if `name` is the name of this subcommand or is one of its aliases.
     #[inline]
@@ -5131,6 +5168,8 @@ impl Default for Command {
             subcommands: Default::default(),
             groups: Default::default(),
             current_help_heading: Default::default(),
+            current_subcommand_help_heading: Default::default(),
+            subcommand_help_heading: Default::default(),
             current_disp_ord: Some(0),
             subcommand_value_name: Default::default(),
             subcommand_heading: Default::default(),

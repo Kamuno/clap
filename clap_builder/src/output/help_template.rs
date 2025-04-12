@@ -409,7 +409,10 @@ impl HelpTemplate<'_, '_> {
                 .cmd
                 .get_subcommand_help_heading()
                 .unwrap_or(&default_help_heading);
-            let _ = write!(self.writer, "{header}{help_heading}:{header:#}\n",);
+            //let _ = write!(self.writer, "{header}{help_heading}:{header:#}\n",);
+            if self.cmd.needs_commands_header() {
+                let _ = write!(self.writer, "{header}{help_heading}:{header:#}\n",);
+            }
 
             self.write_subcommands(self.cmd);
         }
@@ -866,7 +869,7 @@ impl HelpTemplate<'_, '_> {
             .filter(|subcommand| should_show_subcommand(subcommand))
         {
             ord_v.insert(
-                (subcommand.get_display_order(), subcommand.get_name()),
+                (subcommand.get_subcommand_help_heading(), subcommand.get_display_order(), subcommand.get_name()),
                 subcommand,
             );
         }
@@ -934,18 +937,38 @@ impl HelpTemplate<'_, '_> {
                 let _ = write!(styled, ", {literal}--{long}{literal:#}",);
             }
             longest = longest.max(styled.display_width());
-            ord_v.insert((subcommand.get_display_order(), styled), subcommand);
+            ord_v.insert((subcommand.get_subcommand_help_heading(), subcommand.get_display_order(), styled), subcommand);
         }
 
         debug!("HelpTemplate::write_subcommands longest = {longest}");
 
         let next_line_help = self.will_subcommands_wrap(cmd.get_subcommands(), longest);
+        let mut current_help_heading: Option<&str> = None;
+        let mut help_heading_nl_needed = true;
 
         for (i, (sc_str, sc)) in ord_v.into_iter().enumerate() {
             if 0 < i {
                 self.writer.push_str("\n");
             }
-            self.write_subcommand(sc_str.1, sc, next_line_help, longest);
+
+            let opt_help_heading = sc_str.0;
+
+            if current_help_heading != opt_help_heading {
+                if let Some(help_heading) = opt_help_heading {
+                    let header = &self.styles.get_header();
+                    if help_heading_nl_needed {
+                        help_heading_nl_needed = false;
+                    } else {
+                        self.writer.push_str("\n");
+                    };
+                    let _ = write!(self.writer, "{header}{help_heading}:{header:#}\n",);
+                }
+                current_help_heading.replace(sc_str.0.unwrap());
+            } else {
+                help_heading_nl_needed = false;
+            }
+
+            self.write_subcommand(sc_str.clone().2, sc, next_line_help, longest);
         }
     }
 
